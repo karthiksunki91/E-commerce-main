@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
-export default function FilterSidebar({ categories }) {
+function FilterSidebarInner({ categories }) {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -170,5 +170,13 @@ export default function FilterSidebar({ categories }) {
 
       </div>
     </>
+  );
+}
+
+export default function FilterSidebar({ categories }) {
+  return (
+    <Suspense fallback={<div className="md:w-64 flex-shrink-0 animate-pulse bg-gray-100 dark:bg-zinc-800 rounded-2xl h-96"></div>}>
+      <FilterSidebarInner categories={categories} />
+    </Suspense>
   );
 }

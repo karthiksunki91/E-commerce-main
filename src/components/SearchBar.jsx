@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
-export default function SearchBar() {
+function SearchInput() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [query, setQuery] = useState(searchParams.get('q') || '');
@@ -66,5 +66,13 @@ export default function SearchBar() {
         </svg>
       </button>
     </form>
+  );
+}
+
+export default function SearchBar() {
+  return (
+    <Suspense fallback={<div className="w-full max-w-sm hidden md:block h-10"></div>}>
+      <SearchInput />
+    </Suspense>
   );
 }
