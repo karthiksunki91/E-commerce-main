@@ -6,7 +6,6 @@ import Spinner from '@/components/Spinner';
 
 export default function AdminDashboardOverview() {
   const [loading, setLoading] = useState(true);
-  const [seeding, setSeeding] = useState(false);
   
   // Metrics
   const [metrics, setMetrics] = useState({
@@ -54,49 +53,6 @@ export default function AdminDashboardOverview() {
     fetchMetrics();
   }, []);
 
-  const handleSeedData = async () => {
-    if (!confirm("This will insert 15 dummy products into your database. Keep clicking this if you want more items. Proceed?")) return;
-    
-    setSeeding(true);
-    try {
-      const dummyProducts = [
-        { name: "Premium Wireless Headphones", price: 299.99, stock: 50, description: "Noise-cancelling over-ear headphones with 30-hour battery life and immersive sound quality.", image_url: "https://images.unsplash.com/photo-1546435770-a3e426bf472b?q=80&w=800&auto=format&fit=crop" },
-        { name: "Minimalist Smartwatch", price: 199.50, stock: 120, description: "Sleek fitness tracker and smartwatch with heart rate monitoring and OLED display.", image_url: "https://images.unsplash.com/photo-1523275335684-37898b6baf30?q=80&w=800&auto=format&fit=crop" },
-        { name: "Mechanical Keyboard", price: 149.00, stock: 0, description: "Tenkeyless mechanical keyboard with Cherry MX Red switches and customizable RGB lighting.", image_url: "https://images.unsplash.com/photo-1595225476474-87563907a212?q=80&w=800&auto=format&fit=crop" },
-        { name: "Ergonomic Office Chair", price: 349.99, stock: 15, description: "Highly adjustable ergonomic chair with lumbar support, breathable mesh back, and 4D armrests.", image_url: "https://images.unsplash.com/photo-1505843490538-5133c6c7d0e1?q=80&w=800&auto=format&fit=crop" },
-        { name: "4K Action Camera", price: 249.00, stock: 45, description: "Rugged, waterproof action camera shooting 4K video at 60fps with built-in image stabilization.", image_url: "https://images.unsplash.com/photo-1564466809058-bf4114d55352?q=80&w=800&auto=format&fit=crop" },
-        { name: "Leather Messenger Bag", price: 129.99, stock: 60, description: "Handcrafted full-grain leather bag with padded laptop compartment and brass hardware.", image_url: "https://images.unsplash.com/photo-1553062407-98eeb64c6a62?q=80&w=800&auto=format&fit=crop" },
-        { name: "Smart Home Hub", price: 89.99, stock: 200, description: "Voice-controlled smart assistant to control lighting, security, and media across your home.", image_url: "https://images.unsplash.com/photo-1558089687-f282ffcbc126?q=80&w=800&auto=format&fit=crop" },
-        { name: "Ceramic Coffee Dripper", price: 35.00, stock: 85, description: "Pour-over coffee maker crafted from high-heat ceramic for pure, clean coffee extraction.", image_url: "https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?q=80&w=800&auto=format&fit=crop" },
-        { name: "Wireless Charging Pad", price: 45.00, stock: 150, description: "Fast 15W wireless charging pad with premium fabric finish compatible with all Qi devices.", image_url: "https://images.unsplash.com/photo-1586816879360-004f5b0c51e3?q=80&w=800&auto=format&fit=crop" },
-        { name: "Noise-Isolating Earbuds", price: 149.99, stock: 3, description: "True wireless earbuds featuring advanced noise isolation, compact charging case, and rich bass.", image_url: "https://images.unsplash.com/photo-1590658268037-6bf12165a8df?q=80&w=800&auto=format&fit=crop" },
-        { name: "Stainless Steel Water Bottle", price: 29.50, stock: 300, description: "Double-wall vacuum insulated bottle keeping drinks cold for 24 hours or hot for 12 hours.", image_url: "https://images.unsplash.com/photo-1602143407151-7111542de6e8?q=80&w=800&auto=format&fit=crop" },
-        { name: "Polarized Sunglasses", price: 85.00, stock: 40, description: "Classic wayfarer style sunglasses with 100% UV protection and glare-reducing polarized lenses.", image_url: "https://images.unsplash.com/photo-1511499767150-a48a237f0083?q=80&w=800&auto=format&fit=crop" },
-        { name: "Portable SSD 1TB", price: 119.99, stock: 75, description: "Ultra-fast external solid-state drive with USB-C connection and rugged drop-resistant design.", image_url: "https://images.unsplash.com/photo-1597872200969-2b65d56bd16b?q=80&w=800&auto=format&fit=crop" },
-        { name: "Yoga Mat with Alignment Lines", price: 65.00, stock: 110, description: "Eco-friendly, non-slip yoga mat featuring laser-etched alignment markers for perfect poses.", image_url: "https://images.unsplash.com/photo-1592432678016-e910b452f9a2?q=80&w=800&auto=format&fit=crop" },
-        { name: "Chef's Knife 8-Inch", price: 110.00, stock: 25, description: "Professional grade high-carbon stainless steel chef's knife for precision chopping and slicing.", image_url: "https://images.unsplash.com/photo-1593618998160-e34014e67546?q=80&w=800&auto=format&fit=crop" }
-      ];
-
-      const { error } = await supabase.from('products').insert(dummyProducts);
-      
-      if (error) throw error;
-      
-      // Update count locally
-      setMetrics(prev => ({
-        ...prev,
-        totalProducts: prev.totalProducts + dummyProducts.length
-      }));
-      
-      alert(`Successfully added ${dummyProducts.length} dummy products!`);
-      
-    } catch (err) {
-      console.error("Seed data error:", err);
-      alert("Failed to seed database.");
-    } finally {
-      setSeeding(false);
-    }
-  };
-
   if (loading) {
     return (
       <div className="flex-1 p-8 flex items-center justify-center">
@@ -112,20 +68,6 @@ export default function AdminDashboardOverview() {
           <h1 className="text-3xl font-extrabold text-gray-900 dark:text-white tracking-tight">Dashboard Overview</h1>
           <p className="text-gray-500 dark:text-gray-400 mt-1">Welcome back, Admin. Here's what's happening today.</p>
         </div>
-        <button
-          onClick={handleSeedData}
-          disabled={seeding}
-          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-xl transition-colors shadow-lg shadow-indigo-600/30 disabled:opacity-75 disabled:cursor-not-allowed"
-        >
-          {seeding ? (
-            <Spinner size="sm" className="text-white" />
-          ) : (
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-            </svg>
-          )}
-          {seeding ? 'Seeding Database...' : 'Seed Dummy Products'}
-        </button>
       </div>
 
       {/* Metrics Grid */}
@@ -153,7 +95,7 @@ export default function AdminDashboardOverview() {
             </div>
             <h3 className="text-gray-500 dark:text-gray-400 font-medium">Total Revenue</h3>
           </div>
-          <p className="text-4xl font-extrabold text-gray-900 dark:text-white">${metrics.totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+          <p className="text-4xl font-extrabold text-gray-900 dark:text-white">₹{metrics.totalRevenue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
         </div>
 
         {/* Metric 3 */}

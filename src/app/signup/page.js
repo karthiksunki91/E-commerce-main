@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -8,10 +8,21 @@ import Link from 'next/link';
 export default function SignupPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState(null);
   const [message, setMessage] = useState(null);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+
+  useEffect(() => {
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        router.push('/');
+      }
+    };
+    checkSession();
+  }, [router]);
 
   const handleSignup = async (e) => {
     e.preventDefault();
@@ -19,7 +30,7 @@ export default function SignupPage() {
     setError(null);
     setMessage(null);
 
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
     });
@@ -28,10 +39,20 @@ export default function SignupPage() {
       setError(error.message);
       setLoading(false);
     } else {
-      setMessage("Signup successful! Redirecting to login...");
-      setTimeout(() => {
-        router.push('/login');
-      }, 2000);
+      // Auto login with disabled email confirmation handling
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (signInError) {
+        setError(signInError.message);
+        setLoading(false);
+      } else {
+        setMessage("Signup successful! Redirecting...");
+        router.push('/');
+        router.refresh();
+      }
     }
   };
 
@@ -91,13 +112,25 @@ export default function SignupPage() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Password</label>
                 <input
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   required
                   className="w-full px-5 py-4 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all shadow-sm"
                   placeholder="Minimum 6 characters"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                 />
+                <div className="flex items-center mt-3 ml-1">
+                  <input
+                    id="show-password"
+                    type="checkbox"
+                    checked={showPassword}
+                    onChange={(e) => setShowPassword(e.target.checked)}
+                    className="w-4 h-4 text-primary bg-white border-gray-300 rounded focus:ring-primary dark:focus:ring-primary dark:ring-offset-zinc-950 focus:ring-2 dark:bg-zinc-900 dark:border-zinc-700 cursor-pointer"
+                  />
+                  <label htmlFor="show-password" className="ml-2 text-sm font-medium text-gray-600 dark:text-gray-400 cursor-pointer">
+                    Show password
+                  </label>
+                </div>
               </div>
             </div>
 

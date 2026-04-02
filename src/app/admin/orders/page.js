@@ -49,9 +49,10 @@ export default function AdminOrdersPage() {
 
   const updateOrderStatus = async (orderId, currentStatus) => {
     let newStatus = 'pending';
-    if (currentStatus === 'pending') newStatus = 'shipped';
+    if (currentStatus === 'pending') newStatus = 'confirmed';
+    else if (currentStatus === 'confirmed') newStatus = 'shipped';
     else if (currentStatus === 'shipped') newStatus = 'delivered';
-    else return; // delivered is final state
+    else return; // delivered or cancelled is final state
 
     try {
       const { error } = await supabase
@@ -125,28 +126,36 @@ export default function AdminOrdersPage() {
                       {formatPrice(order.total_price)}
                     </td>
                     <td className="px-6 py-5 whitespace-nowrap">
-                      <span className={`px-4 py-1.5 inline-flex text-xs font-bold rounded-full capitalize
-                        ${order.status === 'pending' ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400' : 
-                          order.status === 'shipped' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400' : 
-                          'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'}`}
-                      >
+                        <span className={`px-4 py-1.5 inline-flex text-xs font-bold rounded-full capitalize
+                          ${order.status === 'pending' ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400' : 
+                            order.status === 'confirmed' ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400' :
+                            order.status === 'shipped' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400' : 
+                            order.status === 'cancelled' ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400' :
+                            'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'}`}
+                        >
                         {order.status}
                       </span>
                     </td>
                     <td className="px-6 py-5 whitespace-nowrap text-right text-sm font-medium">
-                      {order.status !== 'delivered' ? (
+                      {(order.status !== 'delivered' && order.status !== 'cancelled') ? (
                         <button
                           onClick={() => updateOrderStatus(order.id, order.status)}
                           className="text-primary hover:text-white border border-primary hover:bg-primary px-4 py-2 rounded-xl transition-colors font-bold shadow-sm inline-block"
                         >
-                          Mark as {order.status === 'pending' ? 'Shipped' : 'Delivered'}
+                          Mark as {order.status === 'pending' ? 'Confirmed' : order.status === 'confirmed' ? 'Shipped' : 'Delivered'}
                         </button>
                       ) : (
-                        <span className="text-green-600 font-bold px-4 py-2 flex items-center justify-end gap-1">
-                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-5 h-5">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-                          </svg>
-                          Completed
+                        <span className={`${order.status === 'cancelled' ? 'text-red-600' : 'text-green-600'} font-bold px-4 py-2 flex items-center justify-end gap-1`}>
+                          {order.status !== 'cancelled' ? (
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-5 h-5">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                            </svg>
+                          ) : (
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-5 h-5">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          )}
+                          {order.status === 'cancelled' ? 'Cancelled' : 'Completed'}
                         </span>
                       )}
                     </td>

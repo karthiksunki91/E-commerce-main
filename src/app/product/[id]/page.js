@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import AddToCartButton from '@/components/AddToCartButton';
 import ProductCard from '@/components/ProductCard';
+import ReviewSection from '@/components/ReviewSection';
 import { formatPrice } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
@@ -38,6 +39,39 @@ export default async function ProductPage({ params }) {
     .neq('id', id)
     .limit(4)
     .order('created_at', { ascending: false });
+
+  // Fetch reviews for this product
+  const { data: reviews } = await supabase
+    .from('reviews')
+    .select('id, rating, comment, created_at, user_id, profiles(full_name)')
+    .eq('product_id', id)
+    .order('created_at', { ascending: false });
+
+  // Check if current user is eligible to review
+  let canReview = false;
+  const { data: { session } } = await supabase.auth.getSession();
+  
+  if (session?.user) {
+    const hasReviewed = reviews?.some(r => r.user_id === session.user.id);
+    if (!hasReviewed) {
+      // Check if they have a delivered order
+      const { data: orderItem } = await supabase
+        .from('order_items')
+        .select(`id, orders!inner(status)`)
+        .eq('product_id', id)
+        .eq('orders.user_id', session.user.id)
+        .eq('orders.status', 'delivered')
+        .limit(1);
+        
+      if (orderItem && orderItem.length > 0) {
+        canReview = true;
+      }
+    }
+  }
+
+  const avgRating = reviews?.length > 0 
+    ? (reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length)
+    : 0;
 
   return (
     <main className="min-h-screen pt-8 pb-24 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -94,6 +128,20 @@ export default async function ProductPage({ params }) {
               <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-gray-900 dark:text-white mb-2">
                 {product.name}
               </h1>
+              
+              <div className="flex items-center gap-2 mb-4">
+                <div className="flex">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <svg key={i} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={`w-5 h-5 ${i < Math.round(avgRating) ? 'text-yellow-400' : 'text-gray-200 dark:text-zinc-700'}`}>
+                       <path fillRule="evenodd" d="M10.788 3.21c.448-1.077 1.976-1.077 2.424 0l2.082 5.006 5.404.434c1.164.093 1.636 1.545.749 2.305l-4.117 3.527 1.257 5.273c.271 1.136-.964 2.033-1.96 1.425L12 18.354 7.373 21.18c-.996.608-2.231-.29-1.96-1.425l1.257-5.273-4.117-3.527c-.887-.76-.415-2.212.749-2.305l5.404-.434 2.082-5.005Z" clipRule="evenodd" />
+                    </svg>
+                  ))}
+                </div>
+                <a href="#reviews" className="text-sm font-medium text-primary hover:underline">
+                  {reviews?.length || 0} reviews
+                </a>
+              </div>
+
               <p className="text-3xl text-primary font-bold">
                 {formatPrice(product.price)}
               </p>
@@ -137,6 +185,11 @@ export default async function ProductPage({ params }) {
             </div>
           </div>
         </div>
+      </div>
+      
+      {/* Review Section */}
+      <div id="reviews">
+        <ReviewSection productId={product.id} initialReviews={reviews || []} canReview={canReview} />
       </div>
       
       {/* Related Products Section */}

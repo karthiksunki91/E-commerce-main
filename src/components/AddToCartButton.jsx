@@ -81,10 +81,24 @@ export default function AddToCartButton({ productId, stock }) {
     );
   }
 
+  if (stock <= 0) {
+    return (
+      <button 
+        disabled
+        className="w-full bg-gray-200 dark:bg-zinc-800 text-gray-400 dark:text-zinc-500 font-bold py-4 px-8 rounded-xl cursor-not-allowed flex items-center justify-center gap-3"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+        </svg>
+        Out of Stock
+      </button>
+    );
+  }
+
   return (
     <button 
       onClick={handleAddToCart}
-      disabled={stock <= 0 || loading}
+      disabled={loading}
       className="w-full bg-primary hover:bg-primary-hover text-white font-bold py-4 px-8 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-xl shadow-primary/20 flex items-center justify-center gap-3 active:scale-95 origin-center"
     >
       {loading ? (

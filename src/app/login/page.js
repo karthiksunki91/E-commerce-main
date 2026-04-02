@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -8,9 +8,20 @@ import Link from 'next/link';
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+
+  useEffect(() => {
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        router.push('/');
+      }
+    };
+    checkSession();
+  }, [router]);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -85,13 +96,25 @@ export default function LoginPage() {
                   <a href="#" className="text-sm font-medium text-primary hover:text-primary-hover transition-colors">Forgot password?</a>
                 </div>
                 <input
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   required
                   className="w-full px-5 py-4 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all shadow-sm"
                   placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                 />
+                <div className="flex items-center mt-3 ml-1">
+                  <input
+                    id="show-password"
+                    type="checkbox"
+                    checked={showPassword}
+                    onChange={(e) => setShowPassword(e.target.checked)}
+                    className="w-4 h-4 text-primary bg-white border-gray-300 rounded focus:ring-primary dark:focus:ring-primary dark:ring-offset-zinc-950 focus:ring-2 dark:bg-zinc-900 dark:border-zinc-700 cursor-pointer"
+                  />
+                  <label htmlFor="show-password" className="ml-2 text-sm font-medium text-gray-600 dark:text-gray-400 cursor-pointer">
+                    Show password
+                  </label>
+                </div>
               </div>
             </div>
 

@@ -13,10 +13,15 @@ export default function CartPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   
-  // Checkout flow state: 1: Cart, 2: Address, 3: Payment
   const [checkoutStep, setCheckoutStep] = useState(1);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [checkoutSuccess, setCheckoutSuccess] = useState(false);
+
+  // Address variables
+  const [savedAddresses, setSavedAddresses] = useState([]);
+  const [selectedAddressId, setSelectedAddressId] = useState(null);
+  const [useNewAddress, setUseNewAddress] = useState(true);
+  const [saveThisAddress, setSaveThisAddress] = useState(true);
 
   // Form states
   const [addressDetails, setAddressDetails] = useState({
@@ -54,6 +59,20 @@ export default function CartPage() {
         if (fetchError) throw fetchError;
         
         setCartItems(data || []);
+
+        // Also fetch saved addresses
+        const { data: addressData } = await supabase
+          .from('addresses')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('is_default', { ascending: false });
+          
+        if (addressData && addressData.length > 0) {
+          setSavedAddresses(addressData);
+          setSelectedAddressId(addressData[0].id);
+          setUseNewAddress(false);
+        }
+
       } catch (err) {
         console.error('Error fetching cart:', err);
         setError('Failed to load cart items. Please try again later.');
@@ -83,7 +102,7 @@ export default function CartPage() {
 
   const handleAddressSubmit = (e) => {
     e.preventDefault();
-    if (addressDetails.pincode.length !== 6) {
+    if (useNewAddress && addressDetails.pincode.length !== 6) {
       alert("Please enter a valid 6-digit Pincode.");
       return;
     }
@@ -100,15 +119,54 @@ export default function CartPage() {
       setCheckoutLoading(true);
       setError(null);
 
+      // Validate stock before placing order
+      for (const item of cartItems) {
+        if (item.quantity > item.products.stock) {
+          alert(`Insufficient stock for ${item.products.name}. Only ${item.products.stock} left.`);
+          setCheckoutLoading(false);
+          return;
+        }
+      }
+
       const { data: { user } } = await supabase.auth.getUser();
 
-      // Format comprehensive string representing address + payment
-      const fullAddressString = `Payment Method: ${paymentMethod.toUpperCase()}
+      let fullAddressString = '';
+
+      if (useNewAddress) {
+        fullAddressString = `Payment Method: ${paymentMethod.toUpperCase()}
 Name: ${addressDetails.fullName}
 Phone: ${addressDetails.mobile}
 Address: ${addressDetails.flat}, ${addressDetails.area}${addressDetails.landmark ? ', ' + addressDetails.landmark : ''}
 ${addressDetails.city}, ${addressDetails.state} - ${addressDetails.pincode}
 Country: ${addressDetails.country}`;
+
+        // Save new address if requested
+        if (saveThisAddress) {
+          await supabase.from('addresses').insert({
+            user_id: user.id,
+            full_name: addressDetails.fullName,
+            mobile: addressDetails.mobile,
+            pincode: addressDetails.pincode,
+            flat: addressDetails.flat,
+            area: addressDetails.area,
+            landmark: addressDetails.landmark,
+            city: addressDetails.city,
+            state: addressDetails.state,
+            country: addressDetails.country,
+            is_default: savedAddresses.length === 0
+          });
+        }
+      } else {
+        const addr = savedAddresses.find(a => a.id === selectedAddressId);
+        if (addr) {
+          fullAddressString = `Payment Method: ${paymentMethod.toUpperCase()}
+Name: ${addr.full_name}
+Phone: ${addr.mobile}
+Address: ${addr.flat}, ${addr.area}${addr.landmark ? ', ' + addr.landmark : ''}
+${addr.city}, ${addr.state} - ${addr.pincode}
+Country: ${addr.country || 'India'}`;
+        }
+      }
 
       const { data: orderData, error: orderError } = await supabase
         .from('orders')
@@ -137,12 +195,38 @@ Country: ${addressDetails.country}`;
 
       if (itemsError) throw itemsError;
 
+      // UPDATE STOCKS
+      for (const item of cartItems) {
+        await supabase
+          .from('products')
+          .update({ stock: item.products.stock - item.quantity })
+          .eq('id', item.product_id);
+      }
+
       const { error: clearError } = await supabase
         .from('cart_items')
         .delete()
         .eq('user_id', user.id);
 
       if (clearError) throw clearError;
+
+      // Send Email Notification
+      try {
+        fetch('/api/send-order-email', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            orderId,
+            userId: user.id,
+            totalPrice: cartTotal,
+            items: cartItems
+          }),
+        }).catch(err => console.error("Email API failed:", err));
+      } catch (emailError) {
+        console.error("Error initiating email notification:", emailError);
+      }
 
       setCheckoutSuccess(true);
       setCartItems([]);
@@ -280,116 +364,165 @@ Country: ${addressDetails.country}`;
                 </div>
 
                 <form id="addressForm" onSubmit={handleAddressSubmit} className="space-y-6">
-                  {/* Indian Form layout typically used in Amazon/Flipkart */}
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Country/Region</label>
-                    <select 
-                      disabled
-                      className="w-full border border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-800 text-gray-500 dark:text-gray-400 rounded-xl px-4 py-3 opacity-80 cursor-not-allowed"
-                    >
-                      <option>India</option>
-                    </select>
-                  </div>
+                  {savedAddresses.length > 0 && (
+                    <div className="mb-8 p-6 bg-gray-50 dark:bg-zinc-800/50 rounded-2xl border border-gray-100 dark:border-zinc-800">
+                      <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Saved Addresses</h3>
+                      <div className="space-y-3">
+                        {savedAddresses.map(addr => (
+                          <label key={addr.id} className={`flex items-start gap-3 p-4 border rounded-xl cursor-pointer transition-all ${!useNewAddress && selectedAddressId === addr.id ? 'border-primary bg-primary/5' : 'border-gray-200 dark:border-zinc-700 hover:border-gray-300'}`}>
+                            <input 
+                              type="radio" 
+                              name="addressSelection" 
+                              checked={!useNewAddress && selectedAddressId === addr.id}
+                              onChange={() => {
+                                setUseNewAddress(false);
+                                setSelectedAddressId(addr.id);
+                              }}
+                              className="w-5 h-5 text-primary border-gray-300 mt-0.5"
+                            />
+                            <div>
+                              <p className="font-bold text-gray-900 dark:text-white">{addr.full_name}</p>
+                              <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{addr.flat}, {addr.area}, {addr.city}, {addr.state} - {addr.pincode}</p>
+                              <p className="text-sm text-gray-500 mt-1">Mobile: {addr.mobile}</p>
+                            </div>
+                          </label>
+                        ))}
+                      </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Full Name *</label>
-                      <input 
-                        type="text" required
-                        value={addressDetails.fullName}
-                        onChange={e => setAddressDetails(p => ({...p, fullName: e.target.value}))}
-                        className="w-full border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all shadow-sm"
-                      />
+                      <div className="mt-4 pt-4 border-t border-gray-200 dark:border-zinc-700">
+                        <label className="flex items-center gap-3 cursor-pointer">
+                          <input 
+                            type="radio" 
+                            name="addressSelection" 
+                            checked={useNewAddress}
+                            onChange={() => setUseNewAddress(true)}
+                            className="w-5 h-5 text-primary border-gray-300"
+                          />
+                          <span className="font-bold text-gray-900 dark:text-white">Add a New Address</span>
+                        </label>
+                      </div>
                     </div>
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Mobile Number *</label>
-                      <input 
-                        type="tel" required
-                        placeholder="10-digit number"
-                        pattern="[0-9]{10}"
-                        value={addressDetails.mobile}
-                        onChange={e => setAddressDetails(p => ({...p, mobile: e.target.value}))}
-                        className="w-full border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all shadow-sm"
-                      />
+                  )}
+
+                  {useNewAddress && (
+                    <div className="space-y-6 animate-fadeIn">
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Country/Region</label>
+                        <select 
+                          disabled
+                          className="w-full border border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-800 text-gray-500 dark:text-gray-400 rounded-xl px-4 py-3 opacity-80 cursor-not-allowed"
+                        >
+                          <option>India</option>
+                        </select>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Full Name *</label>
+                          <input 
+                            type="text" required={useNewAddress}
+                            value={addressDetails.fullName}
+                            onChange={e => setAddressDetails(p => ({...p, fullName: e.target.value}))}
+                            className="w-full border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all shadow-sm"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Mobile Number *</label>
+                          <input 
+                            type="tel" required={useNewAddress}
+                            placeholder="10-digit number"
+                            pattern="[0-9]{10}"
+                            value={addressDetails.mobile}
+                            onChange={e => setAddressDetails(p => ({...p, mobile: e.target.value}))}
+                            className="w-full border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all shadow-sm"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Pincode *</label>
+                        <input 
+                          type="text" required={useNewAddress}
+                          placeholder="6 digits [0-9]"
+                          pattern="[0-9]{6}"
+                          value={addressDetails.pincode}
+                          onChange={e => setAddressDetails(p => ({...p, pincode: e.target.value}))}
+                          className="w-full md:w-1/2 border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all shadow-sm"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Flat, House no., Building, Company, Apartment *</label>
+                        <input 
+                          type="text" required={useNewAddress}
+                          value={addressDetails.flat}
+                          onChange={e => setAddressDetails(p => ({...p, flat: e.target.value}))}
+                          className="w-full border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all shadow-sm"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Area, Street, Sector, Village *</label>
+                        <input 
+                          type="text" required={useNewAddress}
+                          value={addressDetails.area}
+                          onChange={e => setAddressDetails(p => ({...p, area: e.target.value}))}
+                          className="w-full border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all shadow-sm"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Landmark</label>
+                        <input 
+                          type="text" placeholder="E.g. near apollo hospital"
+                          value={addressDetails.landmark}
+                          onChange={e => setAddressDetails(p => ({...p, landmark: e.target.value}))}
+                          className="w-full border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all shadow-sm"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Town/City *</label>
+                          <input 
+                            type="text" required={useNewAddress}
+                            value={addressDetails.city}
+                            onChange={e => setAddressDetails(p => ({...p, city: e.target.value}))}
+                            className="w-full border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all shadow-sm"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">State *</label>
+                          <select 
+                            required={useNewAddress}
+                            value={addressDetails.state}
+                            onChange={e => setAddressDetails(p => ({...p, state: e.target.value}))}
+                            className="w-full border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all shadow-sm appearance-none"
+                          >
+                            <option value="" disabled>Choose a state</option>
+                            <option value="Andhra Pradesh">Andhra Pradesh</option>
+                            <option value="Delhi">Delhi</option>
+                            <option value="Karnataka">Karnataka</option>
+                            <option value="Maharashtra">Maharashtra</option>
+                            <option value="Tamil Nadu">Tamil Nadu</option>
+                            <option value="Telangana">Telangana</option>
+                            <option value="Other">Other</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="pt-4 flex items-center gap-3">
+                        <input 
+                          type="checkbox" 
+                          id="saveAddress" 
+                          checked={saveThisAddress}
+                          onChange={(e) => setSaveThisAddress(e.target.checked)}
+                          className="w-5 h-5 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer" 
+                        />
+                        <label htmlFor="saveAddress" className="text-gray-700 dark:text-gray-300 font-medium cursor-pointer">Save this address</label>
+                      </div>
                     </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Pincode *</label>
-                    <input 
-                      type="text" required
-                      placeholder="6 digits [0-9]"
-                      pattern="[0-9]{6}"
-                      value={addressDetails.pincode}
-                      onChange={e => setAddressDetails(p => ({...p, pincode: e.target.value}))}
-                      className="w-full md:w-1/2 border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all shadow-sm"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Flat, House no., Building, Company, Apartment *</label>
-                    <input 
-                      type="text" required
-                      value={addressDetails.flat}
-                      onChange={e => setAddressDetails(p => ({...p, flat: e.target.value}))}
-                      className="w-full border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all shadow-sm"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Area, Street, Sector, Village *</label>
-                    <input 
-                      type="text" required
-                      value={addressDetails.area}
-                      onChange={e => setAddressDetails(p => ({...p, area: e.target.value}))}
-                      className="w-full border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all shadow-sm"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Landmark</label>
-                    <input 
-                      type="text" placeholder="E.g. near apollo hospital"
-                      value={addressDetails.landmark}
-                      onChange={e => setAddressDetails(p => ({...p, landmark: e.target.value}))}
-                      className="w-full border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all shadow-sm"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Town/City *</label>
-                      <input 
-                        type="text" required
-                        value={addressDetails.city}
-                        onChange={e => setAddressDetails(p => ({...p, city: e.target.value}))}
-                        className="w-full border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all shadow-sm"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">State *</label>
-                      <select 
-                        required
-                        value={addressDetails.state}
-                        onChange={e => setAddressDetails(p => ({...p, state: e.target.value}))}
-                        className="w-full border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all shadow-sm appearance-none"
-                      >
-                        <option value="" disabled>Choose a state</option>
-                        <option value="Andhra Pradesh">Andhra Pradesh</option>
-                        <option value="Delhi">Delhi</option>
-                        <option value="Karnataka">Karnataka</option>
-                        <option value="Maharashtra">Maharashtra</option>
-                        <option value="Tamil Nadu">Tamil Nadu</option>
-                        <option value="Telangana">Telangana</option>
-                        <option value="Other">Other</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="pt-4 flex items-center gap-3">
-                    <input type="checkbox" id="default" className="w-5 h-5 rounded border-gray-300 text-primary focus:ring-primary" />
-                    <label htmlFor="default" className="text-gray-700 dark:text-gray-300 font-medium">Make this my default address</label>
-                  </div>
+                  )}
                 </form>
               </div>
             )}
